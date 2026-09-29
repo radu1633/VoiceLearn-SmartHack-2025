@@ -1,228 +1,75 @@
-# 📚 VoiceLearn+
+# VoiceLearn+ — speech-based reading & dictation coach for early readers
 
-<div align="center">
+Children read sentences aloud or write down what they hear. A **speech-to-text model** scores their reading against the target sentence, and an **LLM turns the results into reports for teachers**. Built by team **RAVS** at **SmartHack 2025**.
 
-![VoiceLearn+ Logo](https://img.shields.io/badge/VoiceLearn+-AI%20Powered%20Learning-blueviolet?style=for-the-badge&logo=book-open)
+## Problem
 
-**AI-powered learning platform for early readers and writers**
+Children in the early grades need individual feedback on reading aloud and on dictation. Teachers rarely have time to give it to every student.
 
-[![SmartHack 2025](https://img.shields.io/badge/SmartHack-2025-orange?style=flat-square)](https://smarthack.ro)
-[![React](https://img.shields.io/badge/React-18.3-61DAFB?style=flat-square&logo=react)](https://reactjs.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-Python-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-336791?style=flat-square&logo=postgresql)](https://www.postgresql.org/)
+## How it works
 
-*Presented by Team RAVS at SmartHack 2025*
+- **Read Aloud.** The child reads a sentence and the frontend records it. The backend (`/analyze_audio`) sends the audio to the speech-to-text service, then returns the transcript and a similarity score against the target sentence.
+- **Listen & Write.** The sentence is synthesized with `gpt-4o-mini-tts` (`/generate_audio`). The child types what they hear, and the answer is checked for spelling.
+- **Teacher reports.** Results are stored in PostgreSQL. `gpt-4.1-mini` summarizes each student's error patterns into concrete recommendations (e.g. frequent homophone confusions → homophone exercises).
+- **Privacy.** Audio is written to a temporary file only for the duration of the analysis, then deleted.
+- **Gamified UI.** A mascot, confetti and a pop-the-balloon mini-game keep kids engaged.
 
-</div>
-
----
-
-## 🎯 The Problem
-
-Children in early grades struggle with:
-
-- 📖 **Reading aloud** with correct pronunciation
-- ✍️ **Writing what they hear** (dictation)
-- 💬 **Getting personalized feedback** in real time
-
-Teachers spend hours identifying patterns and giving individual feedback manually.
-
-**Result:** Slow learning progress and lack of personalized attention.
-
----
-
-## 💡 The Solution
-
-**VoiceLearn+** uses AI to create a personalized reading and writing coach for each student. It includes:
-
-### 🎙️ Read Aloud Mode
-Student reads a sentence; AI checks pronunciation accuracy and highlights mistakes.
-
-### ✍️ Listen & Write Mode  
-Student listens and types what they hear; AI checks spelling and context accuracy.
-
-### 📊 Teacher Dashboard
-Shows progress, accuracy scores, and personalized teaching insights.
-
----
-
-## 🔧 How It Works
-
-### For Students
-
-| Feature | Description |
-|---------|-------------|
-| 🎤 **Speech Recognition (STT)** | Compare spoken text with target text |
-| 📊 **Accuracy Scoring** | Using text similarity (Levenshtein distance) |
-| 🔊 **Highlighted Feedback** | Correct pronunciation playback for mispronounced words |
-
-### For Teachers
-
-AI reports are generated automatically with insights like:
-> *"Student often confuses write/right. Recommend homophone exercises."*
-
----
-
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| **Frontend** | React 18 + TypeScript + Vite + TailwindCSS |
-| **Backend** | FastAPI (Python) |
-| **Database** | PostgreSQL |
-| **AI/ML** | Faster Whisper / GPT-4o-mini TTS |
-| **AI Feedback Engine** | Powered by OpenAI |
-
----
-
-## 📁 Project Structure
-
-```
-SmartHack-2025/
-├── API/                      # Backend FastAPI server
-│   ├── main.py               # API endpoints
-│   ├── models.py             # Database models
-│   ├── database.py           # Database configuration
-│   └── docker-compose.yml    # Docker setup
-├── frontend/                 # React frontend application
-│   ├── src/
-│   │   ├── pages/            # Page components
-│   │   │   ├── Home.tsx
-│   │   │   ├── ReadAloud.tsx
-│   │   │   ├── ListenWrite.tsx
-│   │   │   ├── Dashboard.tsx
-│   │   │   └── Reward.tsx
-│   │   ├── components/       # Reusable UI components
-│   │   ├── api/              # API client functions
-│   │   ├── utils/            # Utility functions
-│   │   └── types/            # TypeScript types
-│   └── package.json
-├── sentences.sql             # Sample sentences for exercises
-├── students.sql              # Sample student data
-└── VoiceLearn+.pdf           # Project presentation
+```mermaid
+flowchart LR
+  K[Child reads aloud] --> FE[React app]
+  FE -->|audio + target text| API[FastAPI]
+  API --> STT[STT model<br/>Hugging Face Space]
+  STT -->|transcript + score| API
+  API --> DB[(PostgreSQL)]
+  DB --> R[gpt-4.1-mini<br/>teacher report]
 ```
 
----
+## Speech-to-text & pronunciation scoring
 
-## 🚀 Getting Started
+The speech model runs in a Hugging Face Space ([`radu1633/learning-STT-RO`](https://huggingface.co/spaces/radu1633/learning-STT-RO)) built with Gradio and exposed to the backend as an API (`/analyze_audio_en`):
 
-### Prerequisites
+1. **Audio preprocessing:** ffmpeg converts any upload (MP3, WAV or even MP4 video) to 16 kHz mono PCM, the format Whisper expects.
+2. **Transcription:** pretrained **Whisper `base`** through **faster-whisper** (CTranslate2) on CPU. The language is fixed to English, and `condition_on_previous_text=False` makes sure each recording is transcribed on its own.
+3. **Phoneme-level scoring:** both the target sentence and the transcript are converted to IPA phonemes with **phonemizer** (eSpeak, en-US). The score is the normalized Levenshtein similarity between the two phoneme strings: `score = 1 − distance / max(len)`.
 
-- Node.js 18+
-- Python 3.10+
-- PostgreSQL
-- OpenAI API Key
+Comparing phonemes instead of letters means a homophone (*right* vs *write*) is not penalized as a pronunciation error, while a near miss (*ship* vs *sheep*) gets partial credit instead of zero.
 
-### Backend Setup
+## Tech stack
+
+**Backend:** Python, FastAPI, SQLAlchemy, PostgreSQL, Docker Compose, Hugging Face Spaces (gradio_client), OpenAI API
+**Frontend:** React, TypeScript, Vite, Tailwind CSS
+
+## How to run
 
 ```bash
-# Navigate to API directory
 cd API
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
+docker compose up -d                                                  # PostgreSQL 15 + Adminer on :8080
+docker compose exec -T db psql -U smart -d smarthack < ../sentences.sql
+docker compose exec -T db psql -U smart -d smarthack < ../students.sql
 pip install -r requirements.txt
-
-# Set up environment variables
-cp .env.example .env
-# Add your OPENAI_API_KEY to .env
-
-# Start the server
-uvicorn main:app --reload --port 8001
+export OPENAI_API_KEY=...                                             # Windows PowerShell: $env:OPENAI_API_KEY="..."
+uvicorn main:app --reload                                             # http://localhost:8000/docs
 ```
 
-### Frontend Setup
-
 ```bash
-# Navigate to frontend directory
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start development server
 npm run dev
 ```
 
-### Database Setup
+## What I'd improve
 
-```bash
-# Run with Docker
-cd API
-docker-compose up -d
+- **A truer pronunciation signal.** Whisper's language model tends to "correct" mispronounced words into real ones, so an ASR-based score can overrate pronunciation. A phoneme-recognition model (e.g. wav2vec2 trained on phonemes) or goodness-of-pronunciation scoring would measure what the child actually said.
+- **Evaluation on children's speech.** Measure transcription accuracy and score reliability on children's voices, which are harder for models trained mostly on adult speech.
+- **Concurrency.** The Space writes every upload to the same `/tmp` file, so simultaneous requests can overwrite each other. Each request should get its own temporary file.
+- **Consistent API output.** The error branch returns values in a different order than the success branch, and the Gradio demo UI maps the outputs to the wrong fields.
+- **Latency.** The Space's cold start delays the first request. The model could run inside the backend instead.
+- **Code cleanup.** Read the database URL from an environment variable, import `HTTPException` from FastAPI instead of `http.client`, and remove duplicated imports and the committed `__pycache__/` folders.
 
-# Or manually create PostgreSQL database and run SQL scripts
-psql -d your_database -f ../sentences.sql
-psql -d your_database -f ../students.sql
-```
+## My contribution
 
----
+Team project (RAVS). I owned the speech pipeline:
 
-## 📚 API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/sentences_stt` | GET | Get sentences for Read Aloud exercises |
-| `/sentences_tts` | GET | Get sentences for Listen & Write exercises |
-| `/analyze_audio` | POST | Analyze student's audio recording |
-| `/teacher_report` | POST | Generate AI-powered teacher feedback |
-| `/submit_results` | POST | Submit all exercise results for final report |
-| `/generate_audio` | POST | Generate TTS audio for sentences |
-| `/health` | GET | Health check endpoint |
-
----
-
-## ⚖️ Ethics & Privacy
-
-| Principle | Implementation |
-|-----------|----------------|
-| 🔒 **Privacy First** | Does not permanently store students' voices |
-| 🤖 **AI as Assistant** | Shows how AI can be used as an educational assistant, not as a teacher replacement |
-| 🌍 **Equal Access** | Reduces learning inequalities between urban and rural areas by offering free AI vocal practice |
-
----
-
-## ✨ Impact
-
-### For Students
-- ✅ Builds confidence through instant feedback
-- ✅ Improves reading and listening comprehension  
-- ✅ Makes learning fun and gamified 🎉
-
-### For Teachers
-- ✅ Saves time with automated analysis
-- ✅ Enables data-driven teaching decisions
-
----
-
-## 🔮 Next Steps
-
-1. ⏱️ Running real-time classroom tests
-2. 🌍 Multilingual support
-3. 🎮 Gamified learning paths
-
----
-
-## 👥 Team RAVS
-
-This project was created for **SmartHack 2025**.
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-<div align="center">
-
-**Made with ❤️ for early learners**
-
-*SmartHack 2025*
-
-</div>
+- **Speech-to-text:** set up and configured the STT model (Faster-Whisper) and deployed it as a Hugging Face Space ([`radu1633/learning-STT-RO`](https://huggingface.co/spaces/radu1633/learning-STT-RO)), which returns the transcript and a similarity score against the target sentence.
+- **Text-to-speech:** configured speech synthesis (`gpt-4o-mini-tts`) for the Listen & Write mode, so every sentence is played back clearly to the child.
+- **FastAPI integration:** connected both models to the backend through the `/analyze_audio` and `/generate_audio` endpoints, including temporary audio handling (recordings are deleted right after analysis).
