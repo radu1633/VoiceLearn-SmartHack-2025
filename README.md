@@ -70,6 +70,6 @@ npm run dev
 
 Team project (RAVS). I owned the speech pipeline:
 
-- **Speech-to-text:** set up and configured the STT model (Faster-Whisper) and deployed it as a Hugging Face Space ([`radu1633/learning-STT-RO`](https://huggingface.co/spaces/radu1633/learning-STT-RO)), which returns the transcript and a similarity score against the target sentence.
+- **Speech-to-text:** configured faster-whisper (Whisper `base`) and deployed it as a Hugging Face Space ([`radu1633/learning-STT-RO`](https://huggingface.co/spaces/radu1633/learning-STT-RO)) that returns the transcript and a phoneme-level pronunciation score.
 - **Text-to-speech:** configured speech synthesis (`gpt-4o-mini-tts`) for the Listen & Write mode, so every sentence is played back clearly to the child.
 - **FastAPI integration:** connected both models to the backend through the `/analyze_audio` and `/generate_audio` endpoints, including temporary audio handling (recordings are deleted right after analysis).
